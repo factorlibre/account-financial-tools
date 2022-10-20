@@ -5,7 +5,7 @@
         <field name="model">account.account</field>
         <field name="inherit_id" ref="account.view_account_form" />
         <field name="arch" type="xml">
-            <field name="user_type_id" position="before">
+            <field name="account_type" position="before">
                 <field name="asset_profile_id" />
             </field>
         </field>

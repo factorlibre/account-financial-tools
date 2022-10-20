@@ -331,8 +331,7 @@ class AccountAssetRemove(models.TransientModel):
                 move_line_vals = {
                     "name": asset.name,
                     "account_id": self.account_residual_value_id.id,
-                    "analytic_account_id": asset.account_analytic_id.id,
-                    "analytic_tag_ids": [(4, tag.id) for tag in asset.analytic_tag_ids],
+                    "analytic_distribution": asset.analytic_distribution,
                     "debit": residual_value,
                     "credit": 0.0,
                     "partner_id": partner_id,
@@ -345,10 +344,7 @@ class AccountAssetRemove(models.TransientModel):
                     move_line_vals = {
                         "name": asset.name,
                         "account_id": self.account_sale_id.id,
-                        "analytic_account_id": asset.account_analytic_id.id,
-                        "analytic_tag_ids": [
-                            (4, tag.id) for tag in asset.analytic_tag_ids
-                        ],
+                        "analytic_distribution": asset.analytic_distribution,
                         "debit": sale_value,
                         "credit": 0.0,
                         "partner_id": partner_id,
@@ -364,8 +360,7 @@ class AccountAssetRemove(models.TransientModel):
                 move_line_vals = {
                     "name": asset.name,
                     "account_id": account_id,
-                    "analytic_account_id": asset.account_analytic_id.id,
-                    "analytic_tag_ids": [(4, tag.id) for tag in asset.analytic_tag_ids],
+                    "analytic_distribution": asset.analytic_distribution,
                     "debit": balance < 0 and -balance or 0.0,
                     "credit": balance > 0 and balance or 0.0,
                     "partner_id": partner_id,
