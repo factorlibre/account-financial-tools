@@ -18,6 +18,7 @@ class AccountMove(models.Model):
         help="Check this box if your entry has to be reversed at the end "
              "of period.")
     reversal_id = fields.Many2one(
+        copy=False,
         comodel_name='account.move', ondelete='set null', readonly=True,
         string="Reversal Entry")
 
