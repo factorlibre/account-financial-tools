@@ -8,7 +8,7 @@
 
 {
     'name': "Account Renumber Wizard",
-    'version': "11.0.1.0.0",
+    'version': "11.0.1.0.1",
     'author': "Pexego,"
               "Tecnativa,"
               "Odoo Community Association (OCA)",

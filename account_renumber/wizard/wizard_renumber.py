@@ -64,7 +64,7 @@ class WizardRenumber(models.TransientModel):
 
         _logger.debug("Searching for account moves to renumber.")
         move_ids = self.env['account.move'].search(
-            [('journal_id', 'in', self.journal_ids.ids),
+            [('journal_id', 'in', self.with_context(active_test=False).journal_ids.ids),
              ('date', '>=', self.date_from),
              ('date', '<=', self.date_to),
              ('state', '=', 'posted')],
