@@ -654,35 +654,75 @@ class AccountAsset(models.Model):
                     seq -= 1
             line_i_start = 0
 
-    def compute_depreciation_board(self):
-
+    def _unlink_asset_lines_whitout_move(self):
+        self.ensure_one()
         line_obj = self.env["account.asset.line"]
+        domain = [
+            ("asset_id", "=", self.id),
+            ("type", "=", "depreciate"),
+            ("move_id", "=", False),
+            ("init_entry", "=", False),
+        ]
+        line_obj.search(domain).unlink()
 
+    def _get_asset_posted_lines(self):
+        self.ensure_one()
+        line_obj = self.env["account.asset.line"]
+        domain = [
+            ("asset_id", "=", self.id),
+            ("type", "=", "depreciate"),
+            "|",
+            ("move_check", "=", True),
+            ("init_entry", "=", True),
+        ]
+        posted_lines = line_obj.search(domain, order="line_date desc")
+
+        last_line = line_obj
+        if posted_lines:
+            last_line = posted_lines[0]
+        return posted_lines, last_line
+
+    def _add_amount_diff_to_next_deprecation_lines(
+        self,
+        move_check_lines,
+        total_table_lines,
+        table,
+        table_i_start,
+        line_i_start,
+        amount_diff,
+    ):
+        self.ensure_one()
+        if not amount_diff:
+            return
+        # We will auto-create a new line because the number of lines in
+        # the tables are the same as the posted depreciations and there
+        # is still a residual value. Only in this case we will need to
+        # add a new line to the table with the amount of the difference.
+        if len(move_check_lines) == total_table_lines:
+            table[table_i_start]["lines"].append(
+                table[table_i_start]["lines"][line_i_start - 1]
+            )
+            line = table[table_i_start]["lines"][line_i_start]
+            line["days"] = 0
+            line["amount"] -= amount_diff
+        else:
+            amount_diff_to_dist = amount_diff / (
+                (total_table_lines - len(move_check_lines)) or 1
+            )
+            # compensate in first depreciation entry
+            # after last posting
+            for entry in table[table_i_start:]:
+                for line in entry["lines"]:
+                    line["amount"] -= amount_diff_to_dist
+
+    def compute_depreciation_board(self):
         for asset in self:
             currency = asset.company_id.currency_id
             if currency.is_zero(asset.value_residual):
                 continue
-            domain = [
-                ("asset_id", "=", asset.id),
-                ("type", "=", "depreciate"),
-                "|",
-                ("move_check", "=", True),
-                ("init_entry", "=", True),
-            ]
-            posted_lines = line_obj.search(domain, order="line_date desc")
-            if posted_lines:
-                last_line = posted_lines[0]
-            else:
-                last_line = line_obj
-            domain = [
-                ("asset_id", "=", asset.id),
-                ("type", "=", "depreciate"),
-                ("move_id", "=", False),
-                ("init_entry", "=", False),
-            ]
-            old_lines = line_obj.search(domain)
-            if old_lines:
-                old_lines.unlink()
+
+            posted_lines, last_line = asset._get_asset_posted_lines()
+            asset._unlink_asset_lines_whitout_move()
 
             table = asset._compute_depreciation_table()
             if not table:
@@ -736,6 +776,9 @@ class AccountAsset(models.Model):
                 table_i_start = _table_i
                 line_i_start = _line_i
 
+                if self.method_period == "year":
+                    table_i_start -= 1
+
                 # check if residual value corresponds with table
                 # and adjust table when needed
                 depreciated_value_posted = depreciated_value = sum(
@@ -743,29 +786,14 @@ class AccountAsset(models.Model):
                 )
                 residual_amount = asset.depreciation_base - depreciated_value
                 amount_diff = currency.round(residual_amount_table - residual_amount)
-                amount_diff = amount_diff / (
-                    (total_table_lines - len(move_check_lines)) or 1
+                asset._add_amount_diff_to_next_deprecation_lines(
+                    move_check_lines,
+                    total_table_lines,
+                    table,
+                    table_i_start,
+                    line_i_start,
+                    amount_diff,
                 )
-                if amount_diff:
-                    # We will auto-create a new line because the number of lines in
-                    # the tables are the same as the posted depreciations and there
-                    # is still a residual value. Only in this case we will need to
-                    # add a new line to the table with the amount of the difference.
-                    if len(move_check_lines) == total_table_lines:
-                        if asset.method_period == "year":
-                            table_i_start -= 1
-                        table[table_i_start]["lines"].append(
-                            table[table_i_start]["lines"][line_i_start - 1]
-                        )
-                        line = table[table_i_start]["lines"][line_i_start]
-                        line["days"] = 0
-                        line["amount"] = amount_diff
-                    # compensate in first depreciation entry
-                    # after last posting
-                    else:
-                        for entry in table[table_i_start:]:
-                            for line in entry["lines"]:
-                                line["amount"] -= amount_diff
 
             else:  # no posted lines
                 table_i_start = 0
@@ -1063,7 +1091,6 @@ class AccountAsset(models.Model):
     def _compute_depreciation_table_lines(
         self, table, depreciation_start_date, depreciation_stop_date, line_dates
     ):
-
         self.ensure_one()
         currency = self.company_id.currency_id
         asset_sign = 1 if self.depreciation_base >= 0 else -1
@@ -1076,7 +1103,6 @@ class AccountAsset(models.Model):
         )
 
         for i, entry in enumerate(table):
-
             lines = []
             fy_amount_check = 0.0
             fy_amount = entry["fy_amount"]
