@@ -175,6 +175,7 @@ Contributors
 ~~~~~~~~~~~~
 
 * Andrea Stirpe <a.stirpe@onestein.nl>
+* Óscar Indias Martín <oscar.indias@factorlibre.com>
 
 Other credits
 ~~~~~~~~~~~~~
