@@ -121,3 +121,20 @@ class TestAccountReversal(TransactionCase):
 
         self.assertEqual(len(rev.line_ids), 200)
         self.assertEqual(rev.state, 'posted')
+
+    def test_copy(self):
+        move = self._create_move()
+        move_prefix = 'REV_TEST_MOVE:'
+        line_prefix = 'REV_TEST_LINE:'
+        wizard = self.env['account.move.reverse'].with_context(
+            active_ids=move.ids
+        ).create({
+            'move_prefix': move_prefix,
+            'line_prefix': line_prefix
+        })
+        self.assertEqual(wizard.date, move.date)
+        res = wizard.action_reverse()
+        rev = self.env['account.move'].browse(res['res_id'])
+        self.assertEqual(move.reversal_id, rev)
+        move2 = move.copy()
+        self.assertFalse(move2.reversal_id)
