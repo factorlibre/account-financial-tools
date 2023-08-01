@@ -77,7 +77,9 @@ class AccountRenumberCase(TransactionCase):
         wizard = self.env["wizard.renumber"].create({
             "date_to": date(self.today.year, 12, 31),
         })
-        wizard.journal_ids = self.journal
+        wizard.with_context(active_test=False).write({
+            "journal_ids": [(6, 0, self.journal.ids)]
+        })
         wizard.renumber()
         new_moves = self.moves_by_name(self.moves)
         for n, move in enumerate(self.moves):
@@ -127,3 +129,8 @@ class AccountRenumberCase(TransactionCase):
         self.moves.write({"journal_id": new_journal.id})
         with self.assertRaises(exceptions.MissingError):
             self.test_renumber_all()
+
+    def test_renumber_journal_desactive(self):
+        """Works fine using a journal active equal to False."""
+        self.journal.active = False
+        self.test_renumber_all()
