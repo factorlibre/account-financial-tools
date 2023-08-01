@@ -1,51 +1,77 @@
-# Copyright 2015-2017 ACSONE SA/NV (<http://acsone.eu>)
+# Copyright 2015-2019 ACSONE SA/NV (<http://acsone.eu>)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
 
 from odoo import models, api, fields, _
 from odoo.exceptions import UserError
+from odoo.tools.misc import format_date
 
 
 class AccountInvoice(models.Model):
     _inherit = "account.invoice"
+
+    @api.model
+    def _prepare_previous_invoices_domain(self, invoice):
+        domain = [
+            ('state', 'not in', ['open',
+                                 'paid',
+                                 'cancel',
+                                 'in_payment',
+                                 'proforma',
+                                 'proforma2']),
+            ('date_invoice', '!=', False),
+            ('date_invoice', '<', invoice.date_invoice),
+            ('journal_id', '=', invoice.journal_id.id),
+        ]
+        if (
+            invoice.journal_id.refund_sequence
+            and invoice.journal_id.sequence_id != invoice.journal_id.refund_sequence_id
+        ):
+            domain.append(('type', '=', invoice.type))
+        return domain
+
+    @api.model
+    def _prepare_later_invoices_domain(self, invoice):
+        domain = [
+            ('state', 'in', ['open', 'in_payment', 'paid']),
+            ('date_invoice', '>', invoice.date_invoice),
+            ('journal_id', '=', invoice.journal_id.id),
+        ]
+        if (
+            invoice.journal_id.refund_sequence
+            and invoice.journal_id.sequence_id != invoice.journal_id.refund_sequence_id
+        ):
+            domain.append(('type', '=', invoice.type))
+        return domain
 
     @api.multi
     def action_move_create(self):
         previously_validated = self.filtered(lambda inv: inv.move_name)
         res = super(AccountInvoice, self).action_move_create()
         for inv in self:
-            if inv.journal_id.check_chronology:
-                invoices = \
-                    self.search([('state', 'not in',
-                                  ['open', 'paid', 'cancel', 'proforma',
-                                   'proforma2']),
-                                 ('date_invoice', '!=', False),
-                                 ('date_invoice', '<', inv.date_invoice),
-                                 ('journal_id', '=', inv.journal_id.id)],
-                                limit=1)
+            if not inv.journal_id.check_chronology:
+                continue
+            invoices = self.search(
+                self._prepare_previous_invoices_domain(inv), limit=1)
+            if invoices:
+                date_invoice_format = fields.Date.from_string(inv.date_invoice)
+                date_invoice_tz = format_date(
+                    self.env, fields.Date.context_today(
+                        self, date_invoice_format))
+                raise UserError(_(
+                    "Chronology Error. Please confirm older draft invoices "
+                    "before {date_invoice} and try again.").format(
+                    date_invoice=date_invoice_tz))
+            if inv not in previously_validated:
+                invoices = self.search(
+                    self._prepare_later_invoices_domain(inv), limit=1)
                 if invoices:
-                    date_invoice_format = fields.Date.\
-                        from_string(inv.date_invoice)
-                    date_invoice_tz = fields\
-                        .Date.context_today(self, date_invoice_format)
-                    raise UserError(_("Chronology Error. "
-                                      "Please confirm older draft "
-                                      "invoices before %s and try again.")
-                                    % date_invoice_tz)
-                if inv not in previously_validated:
-                    invoices = self.search([('state', 'in', ['open', 'paid']),
-                                            ('date_invoice', '>',
-                                             inv.date_invoice),
-                                            ('journal_id', '=',
-                                             inv.journal_id.id)],
-                                           limit=1)
-
-                    if invoices:
-                        date_invoice_format = fields.Date.\
-                            from_string(inv.date_invoice)
-                        date_invoice_tz = fields\
-                            .Date.context_today(self, date_invoice_format)
-                        raise UserError(_("Chronology Error. "
-                                          "There exist at least one invoice "
-                                          "with a later date to %s.") %
-                                        date_invoice_tz)
+                    date_invoice_format = fields.Date.from_string(
+                        inv.date_invoice)
+                    date_invoice_tz = format_date(
+                        self.env, fields.Date.context_today(
+                            self, date_invoice_format))
+                    raise UserError(_(
+                        "Chronology Error. There exist at least one invoice "
+                        "with a later date to {date_invoice}.").format(
+                        date_invoice=date_invoice_tz))
         return res
