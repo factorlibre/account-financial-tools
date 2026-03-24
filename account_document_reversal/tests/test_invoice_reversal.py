@@ -78,3 +78,8 @@ class TestInvoiceReversal(SavepointCase):
         self.assertTrue(reversed_move_reconcile)
         self.assertEqual(move_reconcile, reversed_move_reconcile)
         self.assertEqual(self.invoice.state, 'cancel')
+
+    def test_button_cancel_empty_recordset(self):
+        """button_cancel on empty recordset should not raise."""
+        empty_moves = self.env['account.move']
+        empty_moves.button_cancel()
