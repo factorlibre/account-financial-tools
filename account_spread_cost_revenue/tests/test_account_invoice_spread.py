@@ -768,3 +768,11 @@ class TestAccountInvoiceSpread(common.TransactionCase):
         # Invoice lines do not contain the lint to the spread.
         refund = self.invoice.refund_invoice_ids[0]
         self.assertFalse(refund.invoice_line_ids.mapped('spread_id'))
+
+    def test_16_cancel_invoice_without_spread(self):
+        """Cancel invoice without spread lines should not raise."""
+        self.invoice.journal_id.write({'update_posted': True})
+        self.invoice.action_invoice_open()
+        self.assertEqual(self.invoice.state, 'open')
+        self.invoice.action_invoice_cancel()
+        self.assertEqual(self.invoice.state, 'cancel')
