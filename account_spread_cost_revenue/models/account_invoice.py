@@ -38,8 +38,9 @@ class AccountInvoice(models.Model):
         res = super().action_cancel()
         spread_lines = self.mapped('invoice_line_ids.spread_id.line_ids')
         moves = spread_lines.mapped('move_id')
-        moves.button_cancel()
-        moves.unlink()
+        if moves:
+            moves.button_cancel()
+            moves.unlink()
         spread_lines.unlink()
         return res
 
