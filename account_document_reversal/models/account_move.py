@@ -16,7 +16,7 @@ class AccountMove(models.Model):
     @api.multi
     def button_cancel(self):
         """ Do not allow using this button for cancel with reversal """
-        cancel_reversal = all(self.mapped('is_cancel_reversal'))
+        cancel_reversal = self and all(self.mapped('is_cancel_reversal'))
         if cancel_reversal:
             raise ValidationError(
                 _('This action is not allowed for cancel with reversal.\n'
