@@ -2,6 +2,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 
 
 class AccountSpreadInvoiceLineLinkWizard(models.TransientModel):
@@ -113,6 +114,19 @@ class AccountSpreadInvoiceLineLinkWizard(models.TransientModel):
         self.ensure_one()
 
         if self.spread_action_type == 'link':
+            if not self.spread_id:
+                raise UserError(_(
+                    "Please select a spread board to link."
+                ))
+            if self.spread_id.currency_id != self.invoice_id.currency_id:
+                raise UserError(_(
+                    "The selected spread board is in %s but the invoice is "
+                    "in %s. Link a spread board with the same currency or "
+                    "create a new one."
+                ) % (
+                    self.spread_id.currency_id.name,
+                    self.invoice_id.currency_id.name,
+                ))
             if not self.invoice_line_id.spread_id:
                 self.invoice_line_id.spread_id = self.spread_id
 
@@ -155,6 +169,7 @@ class AccountSpreadInvoiceLineLinkWizard(models.TransientModel):
                     'default_account_analytic_id': analytic_account.id,
                     'default_analytic_tag_ids': analytic_tags.ids,
                     'default_spread_date': date_invoice,
+                    'default_currency_id': self.invoice_id.currency_id.id,
                 },
             }
         elif self.spread_action_type == 'template':
@@ -166,6 +181,7 @@ class AccountSpreadInvoiceLineLinkWizard(models.TransientModel):
                 date_invoice = date_invoice or self.template_id.start_date
                 date_invoice = date_invoice or fields.Date.today()
                 spread_vals['spread_date'] = date_invoice
+                spread_vals['currency_id'] = self.invoice_id.currency_id.id
 
                 spread_vals['name'] = ('%s %s') % (
                     spread_vals['name'],

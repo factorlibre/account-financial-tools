@@ -7,7 +7,7 @@ from psycopg2 import IntegrityError
 
 from odoo.tools import convert_file, mute_logger
 from odoo.modules.module import get_module_resource
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests import common
 
 
@@ -404,3 +404,231 @@ class TestAccountSpreadCostRevenue(common.TransactionCase):
         self.assertFalse(spread.display_create_all_moves)
         self.assertTrue(spread.display_recompute_buttons)
         self.assertTrue(spread.display_move_line_auto_post)
+
+    def _foreign_currency(self):
+        """Return a currency different from the company currency with a
+        known conversion rate (1 company currency = 2 foreign units)."""
+        company = self.env.user.company_id
+        currency = self.env['res.currency'].create({
+            'name': 'TC1',
+            'symbol': 'T1',
+        })
+        self.env['res.currency.rate'].create({
+            'currency_id': currency.id,
+            'rate': 2.0,
+            'name': '2000-01-01',
+            'company_id': company.id,
+        })
+        return currency
+
+    def test_15_foreign_currency_move_conversion(self):
+        """A spread in a foreign currency converts the amount to the company
+        currency, sets amount_currency with the correct sign (no
+        ValidationError), and numbers the move with the journal sequence."""
+        currency = self._foreign_currency()
+        company = self.env.user.company_id
+
+        spread = self.env['account.spread'].create({
+            'name': 'Provisiones',
+            'invoice_type': 'out_invoice',
+            'debit_account_id': self.debit_account.id,
+            'credit_account_id': self.credit_account.id,
+            'currency_id': currency.id,
+            'estimated_amount': 100.0,
+            'period_number': 1,
+        })
+        self.assertEqual(spread.currency_id, currency)
+
+        spread.compute_spread_board()
+        self.assertTrue(spread.line_ids)
+
+        # Creates and (auto-)posts the move(s)
+        spread.create_all_moves()
+        move = spread.line_ids[0].move_id
+        self.assertTrue(move)
+
+        # No ValidationError raised => amount_currency signs are valid.
+        debit_line = move.line_ids.filtered(lambda line: line.debit > 0.0)
+        credit_line = move.line_ids.filtered(lambda line: line.credit > 0.0)
+        self.assertTrue(debit_line)
+        self.assertTrue(credit_line)
+
+        # The amount is converted from the foreign currency to the company
+        # currency (the bug recorded the foreign amount as company amount,
+        # without conversion).
+        spread_line = spread.line_ids[0]
+        expected = currency.with_context(date=spread_line.date).compute(
+            spread_line.amount, company.currency_id)
+        self.assertAlmostEqual(debit_line.debit, expected, places=2)
+        self.assertAlmostEqual(credit_line.credit, expected, places=2)
+        # Conversion actually happened: company amount differs from the raw
+        # foreign amount.
+        self.assertNotAlmostEqual(debit_line.debit, spread_line.amount, places=2)
+
+        # Secondary currency amount kept in the foreign currency, with the
+        # sign required by the core (positive when debited, negative when
+        # credited).
+        self.assertEqual(debit_line.currency_id, currency)
+        self.assertEqual(credit_line.currency_id, currency)
+        self.assertGreater(debit_line.amount_currency, 0.0)
+        self.assertLess(credit_line.amount_currency, 0.0)
+        self.assertAlmostEqual(
+            abs(debit_line.amount_currency), spread_line.amount, places=2)
+        self.assertAlmostEqual(
+            abs(credit_line.amount_currency), spread_line.amount, places=2)
+
+        # Move numbered by the journal sequence, not by the spread name.
+        self.assertEqual(move.state, 'posted')
+        self.assertNotEqual(move.name, '/')
+        self.assertNotEqual(move.name, spread.name)
+        self.assertEqual(move.ref, spread.line_ids[0].name)
+
+    def test_16_wizard_template_propagates_currency(self):
+        """Creating a spread from a foreign-currency invoice through the
+        template path propagates the invoice currency to the spread."""
+        currency = self._foreign_currency()
+        my_company = self.env.user.company_id
+
+        account_revenue = self.account_revenue
+        sales_journal = self.ref('account_spread_cost_revenue.sales_journal')
+        my_company.default_spread_revenue_account_id = account_revenue
+        my_company.default_spread_revenue_journal_id = sales_journal
+
+        template = self.env['account.spread.template'].create({
+            'name': 'tmpl',
+            'spread_type': 'sale',
+            'spread_account_id': account_revenue.id,
+        })
+
+        invoice = self.env['account.invoice'].create({
+            'partner_id': self.env.ref('base.res_partner_2').id,
+            'account_id': self.account_receivable.id,
+            'type': 'out_invoice',
+            'currency_id': currency.id,
+        })
+        invoice_line = self.env['account.invoice.line'].create({
+            'product_id': self.env.ref('product.product_product_4').id,
+            'quantity': 1.0,
+            'price_unit': 100.0,
+            'invoice_id': invoice.id,
+            'name': 'product that cost 100',
+            'account_id': self.account_revenue.id,
+        })
+
+        wizard = self.env['account.spread.invoice.line.link.wizard'].create({
+            'invoice_line_id': invoice_line.id,
+            'company_id': my_company.id,
+            'spread_action_type': 'template',
+            'template_id': template.id,
+            'spread_account_id': account_revenue.id,
+            'spread_journal_id': sales_journal,
+        })
+        wizard.confirm()
+
+        self.assertTrue(invoice_line.spread_id)
+        self.assertEqual(invoice_line.spread_id.currency_id, currency)
+
+    def test_17_wizard_link_currency_mismatch(self):
+        """Linking a foreign-currency invoice to an existing spread board in
+        a different currency is blocked to avoid a silent wrong conversion."""
+        currency = self._foreign_currency()
+        my_company = self.env.user.company_id
+
+        # Existing spread board in the company currency.
+        spread = self.env['account.spread'].create({
+            'name': 'existing',
+            'invoice_type': 'in_invoice',
+            'debit_account_id': self.debit_account.id,
+            'credit_account_id': self.credit_account.id,
+        })
+        self.assertEqual(spread.currency_id, my_company.currency_id)
+
+        invoice = self.env['account.invoice'].create({
+            'partner_id': self.env.ref('base.res_partner_2').id,
+            'account_id': self.account_receivable.id,
+            'type': 'in_invoice',
+            'currency_id': currency.id,
+        })
+        invoice_line = self.env['account.invoice.line'].create({
+            'product_id': self.env.ref('product.product_product_4').id,
+            'quantity': 1.0,
+            'price_unit': 100.0,
+            'invoice_id': invoice.id,
+            'name': 'product that cost 100',
+            'account_id': self.account_expenses.id,
+        })
+
+        wizard = self.env['account.spread.invoice.line.link.wizard'].create({
+            'invoice_line_id': invoice_line.id,
+            'company_id': my_company.id,
+            'spread_action_type': 'link',
+            'spread_id': spread.id,
+        })
+        with self.assertRaises(UserError):
+            wizard.confirm()
+
+    def test_18_foreign_currency_negative_amount(self):
+        """A foreign-currency spread with a negative amount (credit note /
+        reversal) also produces a move with valid amount_currency signs:
+        positive on the debited line, negative on the credited line."""
+        currency = self._foreign_currency()
+
+        spread = self.env['account.spread'].create({
+            'name': 'Provisiones credit note',
+            'invoice_type': 'out_refund',
+            'debit_account_id': self.debit_account.id,
+            'credit_account_id': self.credit_account.id,
+            'currency_id': currency.id,
+            'estimated_amount': -100.0,
+            'period_number': 1,
+        })
+
+        spread.compute_spread_board()
+        self.assertTrue(spread.line_ids)
+        spread.create_all_moves()
+        move = spread.line_ids[0].move_id
+        self.assertTrue(move)
+
+        # No ValidationError => the core currency-sign constraint is honored
+        # even when the lines are reversed for a negative amount.
+        debit_line = move.line_ids.filtered(lambda line: line.debit > 0.0)
+        credit_line = move.line_ids.filtered(lambda line: line.credit > 0.0)
+        self.assertTrue(debit_line)
+        self.assertTrue(credit_line)
+        self.assertGreater(debit_line.amount_currency, 0.0)
+        self.assertLess(credit_line.amount_currency, 0.0)
+        self.assertEqual(move.state, 'posted')
+
+    def test_19_wizard_new_propagates_currency(self):
+        """The 'new' wizard path passes the invoice currency as the default
+        for the spread board to be created."""
+        currency = self._foreign_currency()
+        my_company = self.env.user.company_id
+        sales_journal = self.ref('account_spread_cost_revenue.sales_journal')
+
+        invoice = self.env['account.invoice'].create({
+            'partner_id': self.env.ref('base.res_partner_2').id,
+            'account_id': self.account_receivable.id,
+            'type': 'out_invoice',
+            'currency_id': currency.id,
+        })
+        invoice_line = self.env['account.invoice.line'].create({
+            'product_id': self.env.ref('product.product_product_4').id,
+            'quantity': 1.0,
+            'price_unit': 100.0,
+            'invoice_id': invoice.id,
+            'name': 'product that cost 100',
+            'account_id': self.account_revenue.id,
+        })
+
+        wizard = self.env['account.spread.invoice.line.link.wizard'].create({
+            'invoice_line_id': invoice_line.id,
+            'company_id': my_company.id,
+            'spread_action_type': 'new',
+            'spread_account_id': self.account_revenue.id,
+            'spread_journal_id': sales_journal,
+        })
+        action = wizard.confirm()
+
+        self.assertEqual(
+            action['context']['default_currency_id'], currency.id)
