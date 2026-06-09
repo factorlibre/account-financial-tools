@@ -98,7 +98,7 @@ class AccountInvoiceSpreadLine(models.Model):
             'analytic_account_id': analytic.id,
             'analytic_tag_ids': analytic_tags,
             'currency_id': not_same_curr and current_currency.id or False,
-            'amount_currency': not_same_curr and - 1.0 * self.amount or 0.0,
+            'amount_currency': not_same_curr and self.amount or 0.0,
         }), (0, 0, {
             'name': spread.name.split('\n')[0][:64],
             'account_id': spread.credit_account_id.id,
@@ -108,11 +108,11 @@ class AccountInvoiceSpreadLine(models.Model):
             'analytic_account_id': analytic.id,
             'analytic_tag_ids': analytic_tags,
             'currency_id': not_same_curr and current_currency.id or False,
-            'amount_currency': not_same_curr and self.amount or 0.0,
+            'amount_currency': not_same_curr and - 1.0 * self.amount or 0.0,
         })]
 
         return {
-            'name': self.name or "/",
+            'name': '/',
             'ref': self.name,
             'date': spread_date,
             'journal_id': spread.journal_id.id,

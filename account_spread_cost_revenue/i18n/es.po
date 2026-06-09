@@ -802,3 +802,19 @@ msgstr "Ej. Contrato de limpieza de oficinas por un año"
 #: model:ir.ui.view,arch_db:account_spread_cost_revenue.view_account_spread_template
 msgid "e.g. Template cleaning contract"
 msgstr "Ej. Plantilla de contrato de limpieza"
+
+#. module: account_spread_cost_revenue
+#: code:addons/account_spread_cost_revenue/wizards/account_spread_invoice_line_link_wizard.py:118
+#, python-format
+msgid "Please select a spread board to link."
+msgstr "Selecciona un cuadro de distribución para vincular."
+
+#. module: account_spread_cost_revenue
+#: code:addons/account_spread_cost_revenue/wizards/account_spread_invoice_line_link_wizard.py:122
+#, python-format
+msgid ""
+"The selected spread board is in %s but the invoice is in %s. Link a spread "
+"board with the same currency or create a new one."
+msgstr ""
+"El cuadro de distribución seleccionado está en %s pero la factura está en "
+"%s. Vincula un cuadro con la misma moneda o crea uno nuevo."
