@@ -31,3 +31,10 @@ class ResCompany(models.Model):
         'Auto-archive spread',
         help="Enable this option if you want the cron job to automatically "
              "archive the spreads when all lines are posted.")
+    spread_no_analytic_on_balance = fields.Boolean(
+        'No analytic on balance accounts',
+        default=True,
+        help="If enabled, spread journal entries keep the analytic account "
+             "and tags only on profit & loss lines, never on balance-sheet "
+             "lines (accounts whose type carries the initial balance "
+             "forward).")

@@ -111,6 +111,9 @@ class AccountInvoiceSpreadLine(models.Model):
             'amount_currency': not_same_curr and - 1.0 * self.amount or 0.0,
         })]
 
+        if spread.company_id.spread_no_analytic_on_balance:
+            self._remove_analytic_from_balance_lines(line_ids)
+
         return {
             'name': '/',
             'ref': self.name,
@@ -119,6 +122,25 @@ class AccountInvoiceSpreadLine(models.Model):
             'line_ids': line_ids,
             'company_id': spread.company_id.id,
         }
+
+    @api.multi
+    def _remove_analytic_from_balance_lines(self, line_ids):
+        """Strip the analytic account and tags from balance-sheet move lines.
+
+        The spread move debits/credits one P&L account and one balance-sheet
+        account. Analytic accounting (cost centers) only makes sense on the
+        P&L line, so balance-sheet lines must not carry it. Balance accounts
+        are identified by ``include_initial_balance`` on their account type.
+        """
+        for command in line_ids:
+            line_vals = command[2]
+            if not line_vals.get('analytic_account_id'):
+                continue
+            account = self.env['account.account'].browse(
+                line_vals['account_id'])
+            if account.user_type_id.include_initial_balance:
+                line_vals['analytic_account_id'] = False
+                line_vals['analytic_tag_ids'] = [(5, 0, 0)]
 
     @api.multi
     def open_move(self):
