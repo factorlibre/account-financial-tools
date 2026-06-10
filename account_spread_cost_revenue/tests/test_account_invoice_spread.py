@@ -20,6 +20,11 @@ class TestAccountInvoiceSpread(common.TransactionCase):
         super().setUp()
         self._load('account', 'test', 'account_minimal_test.xml')
 
+        # Keep the legacy behaviour (analytic on every spread move line) for
+        # this suite. The opt-out default (no analytic on balance accounts) is
+        # covered in test_spread_no_analytic_on_balance.py.
+        self.env.user.company_id.spread_no_analytic_on_balance = False
+
         type_receivable = self.env.ref('account.data_account_type_receivable')
         type_payable = self.env.ref('account.data_account_type_payable')
         type_revenue = self.env.ref('account.data_account_type_revenue')

@@ -818,3 +818,19 @@ msgid ""
 msgstr ""
 "El cuadro de distribución seleccionado está en %s pero la factura está en "
 "%s. Vincula un cuadro con la misma moneda o crea uno nuevo."
+
+#. module: account_spread_cost_revenue
+#: model:ir.model.fields,help:account_spread_cost_revenue.field_res_company_spread_no_analytic_on_balance
+msgid ""
+"If enabled, spread journal entries keep the analytic account and tags only "
+"on profit & loss lines, never on balance-sheet lines (accounts whose type "
+"carries the initial balance forward)."
+msgstr ""
+"Si se activa, los asientos de periodificación mantienen la cuenta analítica "
+"y las etiquetas solo en las líneas de pérdidas y ganancias, nunca en las "
+"líneas de cuentas de balance (cuentas cuyo tipo arrastra el saldo inicial)."
+
+#. module: account_spread_cost_revenue
+#: model:ir.model.fields,field_description:account_spread_cost_revenue.field_res_company_spread_no_analytic_on_balance
+msgid "No analytic on balance accounts"
+msgstr "Sin analítica en cuentas de balance"

@@ -772,3 +772,16 @@ msgstr ""
 msgid "e.g. Template cleaning contract"
 msgstr ""
 
+#. module: account_spread_cost_revenue
+#: model:ir.model.fields,help:account_spread_cost_revenue.field_res_company_spread_no_analytic_on_balance
+msgid ""
+"If enabled, spread journal entries keep the analytic account and tags only "
+"on profit & loss lines, never on balance-sheet lines (accounts whose type "
+"carries the initial balance forward)."
+msgstr ""
+
+#. module: account_spread_cost_revenue
+#: model:ir.model.fields,field_description:account_spread_cost_revenue.field_res_company_spread_no_analytic_on_balance
+msgid "No analytic on balance accounts"
+msgstr ""
+

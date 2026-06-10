@@ -24,6 +24,7 @@
                         <group name="spreading_options_right">
                             <field name="force_move_auto_post"/>
                             <field name="auto_archive"/>
+                            <field name="spread_no_analytic_on_balance"/>
                         </group>
                     </group>
                 </page>

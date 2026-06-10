@@ -21,3 +21,10 @@ enable/disable the automatic posting by the flag *Auto-post lines* present in th
 
 On the form view of the company, enable the *Auto-archive spread* option if you want the
 cron job to automatically archive the spreads when all lines are posted.
+
+On the form view of the company, the *No analytic on balance accounts* option (enabled by
+default) keeps the analytic account and analytic tags only on the profit & loss lines of the
+spread journal entries, removing them from the balance-sheet lines (accounts whose type carries
+the initial balance forward). Disable it to restore the previous behaviour, where the analytic
+account is set on every line of the entry. Note that the option only affects entries generated
+after it is changed; previously posted entries are not recomputed.
