@@ -18,18 +18,62 @@ class AccountInvoice(models.Model):
 
     @api.multi
     def invoice_line_move_line_get(self):
-        """Copying expense/revenue account from spread to move lines."""
+        """Copying expense/revenue account from spread to move lines.
+
+        When the spread company strips the analytic data from balance
+        lines, the swapped line of the invoice move must not carry it
+        either (same criterion as the spread entries). These values are
+        consumed as plain ones by ``line_get_convert``, hence ``False``
+        instead of the x2many command used on the spread entries.
+        """
         res = super().invoice_line_move_line_get()
         for line in res:
             invl_id = line.get('invl_id')
             invl = self.env['account.invoice.line'].browse(invl_id)
             if invl.spread_id:
-                if invl.invoice_id.type in ('out_invoice', 'in_refund'):
-                    account = invl.spread_id.debit_account_id
-                else:
-                    account = invl.spread_id.credit_account_id
+                account = invl.spread_id._invoice_move_account(
+                    invl.invoice_id.type)
                 line['account_id'] = account.id
+                company = invl.spread_id.company_id
+                if company.spread_strips_analytic(account):
+                    line['account_analytic_id'] = False
+                    line['analytic_tag_ids'] = False
         return res
+
+    @api.multi
+    def group_lines(self, iml, line):
+        """Keep the lines linked to a spread board out of the grouping.
+
+        Each board reconciles itself against one line of the invoice entry
+        (``account.spread._reconcile_spread_moves``), so two lines linked to
+        different boards merged into one leave boards unreconciled. Once the
+        analytic data is stripped from the swapped balance line, such lines
+        do share the grouping hashcode of the standard module (which keys on
+        account, taxes, product, maturity and analytic), so they are
+        excluded from the merge here. The rest of the invoice keeps grouping
+        as usual, and boards whose lines repeat the description are told
+        apart there by their balance-sheet account and their amount.
+
+        ``iml`` is filtered along with ``line`` even though the standard
+        method only iterates the latter: they are documented as parallel and
+        another module of the chain may rely on it.
+        """
+        self.ensure_one()
+        if not self.journal_id.group_invoice_lines or len(iml) != len(line):
+            return super().group_lines(iml, line)
+        spread_line_ids = set(self.invoice_line_ids.filtered('spread_id').ids)
+        if not spread_line_ids:
+            return super().group_lines(iml, line)
+        kept_apart = []
+        rest_iml = []
+        rest_line = []
+        for vals, converted in zip(iml, line):
+            if vals.get('invl_id') in spread_line_ids:
+                kept_apart.append(converted)
+            else:
+                rest_iml.append(vals)
+                rest_line.append(converted)
+        return super().group_lines(rest_iml, rest_line) + kept_apart
 
     @api.multi
     def action_cancel(self):

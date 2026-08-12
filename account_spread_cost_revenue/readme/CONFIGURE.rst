@@ -25,6 +25,20 @@ cron job to automatically archive the spreads when all lines are posted.
 On the form view of the company, the *No analytic on balance accounts* option (enabled by
 default) keeps the analytic account and analytic tags only on the profit & loss lines of the
 spread journal entries, removing them from the balance-sheet lines (accounts whose type carries
-the initial balance forward). Disable it to restore the previous behaviour, where the analytic
+the initial balance forward). The option also removes the analytic data from the invoice move
+line whose account is swapped to the spread balance-sheet account when the invoice line is
+linked to a spread board. Disable it to restore the previous behaviour, where the analytic
 account is set on every line of the entry. Note that the option only affects entries generated
 after it is changed; previously posted entries are not recomputed.
+
+On journals with the *Group Invoice Lines* option, the invoice lines linked to a spread board
+are never merged into a single move line, even when they share account, taxes, product and
+maturity, because each board reconciles itself against one line of the invoice entry. The
+invoice lines that are not linked to a spread board keep being grouped as usual.
+
+Boards are matched to their move line by the description of the invoice line, and by the
+balance-sheet account and the amount of the board when several lines of the invoice repeat that
+description. Boards repeating the amount as well are matched by their position on the invoice,
+which is indifferent between lines of equal amount. The matching is given up — and then those
+boards are left unreconciled — when a line *without* a spread board repeats both the
+description and the account of a board, since there is no way left to tell the candidates apart.
