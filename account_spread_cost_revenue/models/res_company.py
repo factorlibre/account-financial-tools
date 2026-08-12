@@ -1,7 +1,7 @@
 # Copyright 2018-2019 Onestein (<https://www.onestein.eu>)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class ResCompany(models.Model):
@@ -38,3 +38,19 @@ class ResCompany(models.Model):
              "and tags only on profit & loss lines, never on balance-sheet "
              "lines (accounts whose type carries the initial balance "
              "forward).")
+
+    @api.multi
+    def spread_strips_analytic(self, account):
+        """Whether the spread must leave ``account`` without analytic data.
+
+        Single criterion for both halves of the feature (the lines of the
+        spread entries and the swapped line of the invoice entry): the
+        company option plus a balance-sheet account, identified by
+        ``include_initial_balance`` on its account type. It is always
+        answered by the company of the spread board, so both halves are
+        ruled by the same record — which is required on the board, hence the
+        singleton contract.
+        """
+        self.ensure_one()
+        return bool(self.spread_no_analytic_on_balance
+                    and account.user_type_id.include_initial_balance)

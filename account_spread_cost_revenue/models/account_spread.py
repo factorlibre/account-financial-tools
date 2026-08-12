@@ -515,11 +515,13 @@ class AccountSpread(models.Model):
             # The name is formatted the same way as it is done when creating
             # move lines in method "def invoice_line_move_line_get()" of
             # standard account module
-            raw_name = self.invoice_line_id.name
-            formatted_name = raw_name.split('\n')[0][:64]
-            for move_line in invoice_mls:
-                if move_line.name == formatted_name:
-                    to_be_reconciled |= move_line
+            formatted_name = self._format_move_line_name(
+                self.invoice_line_id.name)
+            to_be_reconciled = invoice_mls.filtered(
+                lambda ml: ml.name == formatted_name)
+            if len(to_be_reconciled) > 1:
+                to_be_reconciled = self._pick_invoice_move_line(
+                    to_be_reconciled)
         else:
             to_be_reconciled = invoice_mls
 
@@ -527,6 +529,97 @@ class AccountSpread(models.Model):
             do_reconcile = spread_mls + to_be_reconciled
             do_reconcile.remove_move_reconcile()
             do_reconcile.reconcile()
+
+    @api.model
+    def _format_move_line_name(self, name):
+        """Format a description the way the standard module does when it
+        creates the move lines of the invoice (``invoice_line_move_line_get``).
+        """
+        return (name or '').split('\n')[0][:64]
+
+    @api.multi
+    def _invoice_move_account(self, invoice_type):
+        """Account this board posts on the invoice entry.
+
+        Single definition of the account swap performed by
+        ``account.invoice.invoice_line_move_line_get``, so that the swap and
+        the reconciliation cannot drift apart.
+        """
+        self.ensure_one()
+        if invoice_type in ('out_invoice', 'in_refund'):
+            return self.debit_account_id
+        return self.credit_account_id
+
+    @api.multi
+    def _pick_invoice_move_line(self, candidates):
+        """Pick this board's move line among candidates sharing a description.
+
+        Invoice lines linked to a board are never merged
+        (``account.invoice.group_lines``), so the invoice entry holds one
+        line per invoice line. When several lines of the invoice repeat the
+        description, the name alone does not tell them apart and nothing was
+        reconciled at all. Tell them apart by the two data the board already
+        owns: the balance-sheet account it posts on, and the amount of its
+        own invoice line. Neither depends on the order in which the entry
+        happens to create its lines.
+
+        Boards that repeat the amount as well are settled by position. This
+        is a pairing, not a per-board choice: every board must end up on a
+        *different* line, which no criterion of its own can ensure once the
+        amounts are equal — and inside that subset a crossed pairing is
+        harmless, because reconciling one line or the other gives the same
+        accounting result.
+
+        The pairing is given up (nothing reconciled, as before) when the
+        candidates cannot be matched one to one with the boards sharing that
+        description, for instance when a line without a board repeats both
+        the description and the account.
+        """
+        self.ensure_one()
+        account = self._invoice_move_account(self.invoice_id.type)
+        candidates = candidates.filtered(lambda ml: ml.account_id == account)
+        if len(candidates) <= 1:
+            return candidates
+        formatted_name = self._format_move_line_name(self.invoice_line_id.name)
+        siblings = self.invoice_id.invoice_line_ids.filtered(
+            lambda invl: invl.spread_id
+            and self._format_move_line_name(invl.name) == formatted_name
+            and invl.spread_id._invoice_move_account(
+                self.invoice_id.type) == account)
+        if len(siblings) != len(candidates):
+            return self.env['account.move.line']
+        matching = self._candidates_of_own_amount(candidates)
+        if len(matching) <= 1:
+            return matching
+        own_amount = self.invoice_line_id.price_subtotal
+        currency = (self.invoice_id.currency_id
+                    or self.invoice_id.company_id.currency_id)
+        tied = siblings.filtered(lambda invl: currency.is_zero(
+            invl.price_subtotal - own_amount))
+        if len(tied) != len(matching):
+            return self.env['account.move.line']
+        return matching.sorted('id')[list(tied).index(self.invoice_line_id)]
+
+    @api.multi
+    def _candidates_of_own_amount(self, candidates):
+        """Candidates whose amount is the one of this board's invoice line.
+
+        ``debit``/``credit`` hold the amount in the currency of the company
+        **of the invoice**, because that is the one the standard module uses
+        to build the entry, so the comparison moves to ``amount_currency``
+        only when the invoice is in a different currency — which is the one
+        ``price_subtotal`` is expressed in. The company of the board governs
+        the option of the feature, never the unit of these numbers.
+        """
+        self.ensure_one()
+        amount = self.invoice_line_id.price_subtotal
+        currency = self.invoice_id.currency_id
+        company_currency = self.invoice_id.company_id.currency_id
+        if currency and currency != company_currency:
+            return candidates.filtered(lambda ml: currency.is_zero(
+                abs(ml.amount_currency) - amount))
+        return candidates.filtered(lambda ml: company_currency.is_zero(
+            abs(ml.debit - ml.credit) - amount))
 
     @api.multi
     def create_all_moves(self):

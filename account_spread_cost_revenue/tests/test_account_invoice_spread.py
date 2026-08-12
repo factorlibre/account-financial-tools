@@ -586,10 +586,17 @@ class TestAccountInvoiceSpread(common.TransactionCase):
         self.spread.company_id.force_move_auto_post = True
         self.spread.line_ids.create_and_reconcile_moves()
 
+        # This invoice repeats the description on a second line (see the
+        # copy() above), which used to make the reconciliation give up
+        # entirely. The board is now told apart by its balance-sheet
+        # account, so it reconciles exactly like in test_10.
         spread_mls = self.spread.line_ids.mapped('move_id.line_ids')
         self.assertTrue(spread_mls)
         for spread_ml in spread_mls:
-            self.assertFalse(spread_ml.full_reconcile_id)
+            if spread_ml.debit:
+                self.assertFalse(spread_ml.full_reconcile_id)
+            if spread_ml.credit:
+                self.assertTrue(spread_ml.full_reconcile_id)
 
         action_reconcile_view = self.spread.open_reconcile_view()
         self.assertTrue(isinstance(action_reconcile_view, dict))
